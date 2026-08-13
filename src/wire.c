@@ -159,13 +159,13 @@ bool wire_setup_objects(void)
         }
     }
     LOGOK("groomed %llu heap-adjacent COW vm_object arrays (size %#llx)",
-          g_groom_cow_n, COW_SRC_PAGES * PAGE_SIZE_);
+          g_groom_cow_n, (U64)(COW_SRC_PAGES * PAGE_SIZE_));
 
     for (U64 i = 0; i < GROOM_OBJECTS / 2 && g_groom_surf_n < GROOM_OBJECTS; i++) {
         if (surf_groom_create(&g_groom_surf[g_groom_surf_n])) g_groom_surf_n++;
     }
     LOGOK("groomed %llu phys-contiguous IOSurface objects (size %#llx)",
-          g_groom_surf_n, GROOM_OBJECT_SIZE);
+          g_groom_surf_n, (U64)GROOM_OBJECT_SIZE);
 
     return g_groom_cow_n > 0;
 }
