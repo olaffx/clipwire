@@ -80,8 +80,10 @@ Tunables (`COW_SRC_PAGES`, `RACE_ITERATIONS`, `GROOM_OBJECTS`, ...) live in
 
 ## Status / caveats
 
-- All C sources pass a pycparser syntactic parse (no compiler on my host);
-  build on macOS with `make sign`.
+- All sources **compile clean with `clang -Wall -Wextra` to object code** and
+  link without any unresolved *internal* symbols (Apple SDK APIs are provided
+  by stub headers on this host); the final `make sign` against the real iOS
+  SDK and `ldid` signing are still unverified.
 - On-device work left: confirm the phys alias resolution reports
   (the `physical_page` field of `mach_vm_page_info`), and, if kernel phys is
   reachable, a phys-window object in the OOB path. The `struct proc`/`ucred`
