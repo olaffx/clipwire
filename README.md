@@ -80,7 +80,7 @@ Tunables (`COW_SRC_PAGES`, `RACE_ITERATIONS`, `GROOM_OBJECTS`, ...) live in
 
 ## Status / caveats
 
-- All C sources pass a pycparser syntactic parse (no compiler on this host);
+- All C sources pass a pycparser syntactic parse (no compiler on my host);
   build on macOS with `make sign`.
 - On-device work left: confirm the phys alias resolution reports
   (the `physical_page` field of `mach_vm_page_info`), and, if kernel phys is
