@@ -1,6 +1,6 @@
 # clipwire
 
-Kernel exploit development harness for the **iPhone 11 (A13, `iPhone12,1`)** on
+Kernel exploit development harness for the **iPhone 11 series (A13, `iPhone12,1`)** on
 **iOS 26.1 (23B85)**.
 
 > **Disclosure status.** Both bugs were found by patch diffing xnu 26.1 (42.6)
@@ -107,3 +107,7 @@ commercial exploitation require separate written authorization.
 **Use at your own risk.**
 
 **I am not responsible for any damage.**
+
+**All A13 devices are supported (iPhone 11, 11 Pro, 11 Pro Max, SE2). "supported" here means offsets apply!** 
+
+**A13 iPads or other devices are NOT supported because of kernelcache mismatch. Please, do not make any issues about this**
