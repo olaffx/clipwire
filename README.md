@@ -3,14 +3,14 @@
 Kernel exploit development harness for the **iPhone 11 (A13, `iPhone12,1`)** on
 **iOS 26.1 (23B85)**.
 
-> **Disclosure status.** Both bugs were found by patch-diffing xnu 26.1 (42.6)
+> **Disclosure status.** Both bugs were found by patch diffing xnu 26.1 (42.6)
 > against 26.6 (162.13) and are **patched in iOS 26.6** — Apple's fix was already
-> shipping when this harness was written. They are disclosed here after the
+> shipping when this harness was written, they are disclosed here after the
 > patch, in the spirit of public exploit research. No CVE has been assigned to
 > either bug. This code is a development harness, not a validated end-to-end
 > jailbreak: see [Status / caveats](#status--caveats).
 
-Targets two bugs found by patch-diffing xnu 26.1 (42.6) against 26.6 (162.13):
+Targets two bugs found by patch diffing xnu 26.1 (42.6) against 26.6 (162.13):
 
 | Stage | Bug | 26.1 symbol (unslid) | 26.6 fix |
 |-------|-----|----------------------|----------|
@@ -53,7 +53,7 @@ clipwire/
    plus an IOSurface phys-contiguous pool for the phys-window case.
    `verify_wire_landed` uses a write-through test: after the OOB, a groom whose
    array was overwritten maps the victim's pages, so a stamp written via the
-   groom's user VA shows up in the victim's wired pages - that identifies the
+   groom's user VA shows up in the victim's wired pages, that identifies the
    victim with no kernel read.
 3. **KRW** `krw.c` resolves every owned page (victim range + COW grooms +
    IOSurface pool) to its phys via `mach_vm_page_info` and builds a `(va,phys)`
@@ -98,7 +98,7 @@ Tunables (`COW_SRC_PAGES`, `RACE_ITERATIONS`, `GROOM_OBJECTS`, ...) live in
 
 ## License
 
-Restricted research license — see [LICENSE](LICENSE). Free for security
+Restricted research license, see [LICENSE](LICENSE). Free for security
 research and analysis; deployment against unauthorized targets, malware, and
 commercial exploitation require separate written authorization.
 
