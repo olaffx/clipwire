@@ -101,3 +101,9 @@ Tunables (`COW_SRC_PAGES`, `RACE_ITERATIONS`, `GROOM_OBJECTS`, ...) live in
 Restricted research license — see [LICENSE](LICENSE). Free for security
 research and analysis; deployment against unauthorized targets, malware, and
 commercial exploitation require separate written authorization.
+
+## Other
+
+**Use at your own risk.**
+
+**I am not responsible for any damage.**
