@@ -163,7 +163,7 @@ void drain_entry_freelist(void)
 /* A correct clip keeps [start, start+expected) as one region whose size
  * is exactly the original dst size. A stale/clipped-out-of-bounds entry
  * grows or splits the region: detect via mach_vm_region. */
-bool entry_looks_corrupt(U64 start, U64 expected_size)
+bool entry_looks_corrupt(U64 start, U64 expected_size, U64 *out_size)
 {
     mach_vm_address_t a = start;
     mach_vm_size_t sz = 0;
@@ -175,14 +175,16 @@ bool entry_looks_corrupt(U64 start, U64 expected_size)
                                       VM_REGION_BASIC_INFO_64,
                                       (vm_region_info_t)&info, &cnt, &obj);
     if (obj != MACH_PORT_NULL) mach_port_deallocate(mach_task_self(), obj);
-    if (kr != KERN_SUCCESS) return false;
-    if (a != start) return false;               /* region no longer starts here */
+    if (kr != KERN_SUCCESS) { if (out_size) *out_size = expected_size; return false; }
+    if (a != start) { if (out_size) *out_size = expected_size; return false; }
 
     if (sz != expected_size) {
         LOGOK("region [%#llx,%#llx) size %#llx != expected %#llx -> corrupt",
               a, a + sz, sz, expected_size);
+        if (out_size) *out_size = sz;
         return true;
     }
+    if (out_size) *out_size = expected_size;
     return false;
 }
 
@@ -207,10 +209,11 @@ int run_clip_race(cow_map_t *m, U64 *corrupted_start, U64 *corrupted_end)
             LOG("race round %llu (fault_hits %llu)", round, g_fault_hits);
         }
 
-        if (entry_looks_corrupt(m->dst_addr, m->dst_size)) {
-            LOGOK("corrupted entry detected at round %llu", round);
+        U64 detected_sz = m->dst_size;
+        if (entry_looks_corrupt(m->dst_addr, m->dst_size, &detected_sz)) {
+            LOGOK("corrupted entry detected at round %llu (size %#llx)", round, detected_sz);
             if (corrupted_start) *corrupted_start = m->dst_addr;
-            if (corrupted_end) *corrupted_end = m->dst_addr + m->dst_size;
+            if (corrupted_end) *corrupted_end = m->dst_addr + detected_sz;
             found = 1;
             break;
         }

@@ -107,7 +107,7 @@ bool   cow_map_setup(cow_map_t *m);
 void   cow_map_teardown(cow_map_t *m);
 void   drain_entry_freelist(void);
 int    run_clip_race(cow_map_t *m, U64 *corrupted_start, U64 *corrupted_end);
-bool   entry_looks_corrupt(U64 start, U64 expected_size);
+bool   entry_looks_corrupt(U64 start, U64 expected_size, U64 *out_size);
 
 /* wire.c (Bug 2) */
 typedef struct {
