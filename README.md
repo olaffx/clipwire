@@ -110,6 +110,8 @@ commercial exploitation require separate written authorization.
 
 **I am not responsible for any damage.**
 
+**This exploit is still a work in progress, we are trying to make it better every day.**
+
 **All A13 devices are supported (iPhone 11, 11 Pro, 11 Pro Max, SE2). "supported" here means offsets apply!** 
 
 **A13 iPads or other devices are NOT supported because of kernelcache mismatch. Please, do not make any issues about this**
