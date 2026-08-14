@@ -72,6 +72,7 @@ typedef struct {
 
 static phys_win_t g_phys_win[WIRE_PHYS_SLOTS];
 static U64 g_phys_win_n = 0;
+static U64 g_phys_win_overflow = 0;
 static U64 g_miss_logs = 0;
 
 /* Physical frame of a mapped, resident page. mach_vm_page_info faults the
@@ -89,7 +90,7 @@ static U64 page_phys(U64 va)
 
 static void phys_cache_add(U64 va)
 {
-    if (g_phys_win_n >= WIRE_PHYS_SLOTS) return;
+    if (g_phys_win_n >= WIRE_PHYS_SLOTS) { g_phys_win_overflow++; return; }
     U64 p = page_phys(va);
     if (!p) return;
     g_phys_win[g_phys_win_n].va = va;
@@ -153,6 +154,10 @@ bool prim_establish(void)
         }
     }
     LOGOK("prim: %llu owned pages resolvable in phys alias cache", g_phys_win_n);
+    if (g_phys_win_overflow) {
+        LOGWARN("prim: phys alias cache overflowed - %llu pages dropped "
+                "(WIRE_PHYS_SLOTS=%d); surf pages were added last", g_phys_win_overflow, WIRE_PHYS_SLOTS);
+    }
     if (g_phys_win_n == 0) {
         LOGBAD("prim: phys alias cache is empty - mach_vm_page_info is not "
                "reporting physical_page on this target");

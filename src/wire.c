@@ -294,6 +294,22 @@ int verify_wire_landed(wire_result_t *r)
 {
     U64 victim = r->corrupt_start;
 
+    /* the SEGV handler is only installed inside peek_u8; make sure it is
+     * live before the clear loop below can fault on a torn-down page. */
+    struct sigaction sa = {0};
+    sa.sa_handler = segv_handler;
+    sigaction(SIGSEGV, &sa, NULL);
+
+    /* clear the victim's probe pages first: a stamp left by a previous
+     * attempt would otherwise fake a hit (wire_oob_write does the same). */
+    for (U64 p = 0; p < PAGE_SIZE_ * COW_FAULT_PAGES; p += 8) {
+        g_in_peek = 1;
+        if (sigsetjmp(g_segv_jmp, 1) == 0) {
+            *(volatile U64 *)(victim + p) = 0;
+        }
+        g_in_peek = 0;
+    }
+
     for (U64 i = 0; i < g_groom_cow_n; i++) {
         volatile U64 *dst = (volatile U64 *)g_groom_cow[i].cow.dst_addr;
         if (dst == NULL) continue;
