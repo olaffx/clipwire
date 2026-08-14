@@ -121,6 +121,7 @@ void   wire_teardown_objects(void);
 bool   run_wire_oob(U64 start, U64 end, wire_result_t *r);
 int    verify_wire_landed(wire_result_t *r);
 int    wire_victim_index(void);
+int    wire_victim_surf(void);
 bool   wire_victim_range(U64 *start, U64 *end);
 bool   wire_groom_info(U64 idx, U64 *base, U64 *size);
 bool   wire_surf_info(U64 idx, U64 *base, U64 *size);

