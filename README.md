@@ -84,6 +84,7 @@ Tunables (`COW_SRC_PAGES`, `RACE_ITERATIONS`, `GROOM_OBJECTS`, ...) live in
 - COW grooming works.
 - IOSurface grooming works.
 - Race fault trigger is successful.
+The exploit should execute without any issues.
 
 ## License
 
