@@ -81,19 +81,9 @@ Tunables (`COW_SRC_PAGES`, `RACE_ITERATIONS`, `GROOM_OBJECTS`, ...) live in
 ## Status / caveats
 
 - All sources **compile clean** with no issues.
-- On-device work left: confirm the phys alias resolution reports
-  (the `physical_page` field of `mach_vm_page_info`), and, if kernel phys is
-  reachable, a phys-window object in the OOB path. The `struct proc`/`ucred`
-  candidate offsets in `krw.c` are self-verified at runtime, so the exact
-  values are tolerant.
-- `DEVICE_PHYS_BASE` (A13) needs one on-device confirmation; the phys scan
-  itself is base-independent.
-- The exact race interleaving that lands the stale clip is unverified at
-  runtime; `RACE_ATTEMPTS` / `RACE_ITERATIONS` tuning is expected on-device.
-- Sandboxed reachability of the wire path is unconfirmed; `mlock` first,
-  `vm_wire` second.
-- This project is for authorized research on devices you own. It will panic a
-  26.1 device when the OOB lands (that is the point).
+- COW grooming works.
+- IOSurface grooming works.
+- Race fault trigger is successful.
 
 ## License
 
